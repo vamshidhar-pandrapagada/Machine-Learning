@@ -1,0 +1,13 @@
+base
+data.table
+dplyr
+ggplot2
+lattice
+caret
+gridExtra
+C50
+rpart
+mlbench
+adabag
+randomForest
+e1071
