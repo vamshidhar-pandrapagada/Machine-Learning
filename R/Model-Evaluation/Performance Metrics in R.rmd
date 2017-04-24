@@ -1,0 +1,439 @@
+---
+title: 'Model Evaluation: Performance Metrics in R'
+author: "Vamshidhar Pandrapagada"
+date: "April 8, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Description
+
+### Part A : 
+The goal is to create  R function that computes various performance measures of classification model. In this project, we attempt to create 2 types of Classification Models BINARY and MULTICLASS (Labels >2).    
+
+1. Solution Part B1 and C1  use a Binary Classification model with 2 Labels and compare the performance metrics of the model using custom built **evaluateClassificationModel** function and **confusionMatrix** function from the caret package.  
+  
+2. Solution Part B2 and C2 use Multi Class Classification model (labels >2) and metrics are compared using custom built  **evaluateClassificationModel** function and **confusionMatrix** function from the caret package
+
+
+### Solution: 
+This function accepts Predicted class and Actual class as input variables. Calculates the following Performance metrics of a Classificaion model.   
+
+1. Table of Actual Class Vs Predicted Class    
+2. Accuracy of the Model    
+3. Precision  
+4. Recall  
+5. Sensitivity  
+6. Specificity  
+7. Error Rate of the Model  
+
+
+```{r}
+evaluateClassificationModel <-function(predictedClass, actualClass)
+{
+  #Check for the Mandatory Input Parameters. Stop and throw an error message is parameters are not passed
+  if (length(predictedClass) == 0)
+    stop("No Predicted Class Values Detected. Please pass the Predicted classes as List.")
+  else if (length(actualClass) == 0)
+    stop("No Actual Class Values Detected. Please pass the Actual classes as List.")
+  else
+    if (length(predictedClass) != length(actualClass))
+      stop("Predicted Class and Actual Class inputs are of Different sizes. They should be of same length.")
+  
+  CM <- table(actualClass,predictedClass)
+  
+  # Logic to calculate Metrics for a 2 Class Prediction
+  if (sum(dim(CM)) == 4)  
+  {
+    True_Positive <- CM[1,1]
+    False_Positive <- CM[2,1]
+    False_Negative <- CM [1,2]
+    True_Negative <-CM[2,2]
+  }
+  # Logic to calculate Metrics for a MULTI CLASS Prediction where Labels > 2
+  else
+  {
+    True_Positive <- sapply(1:nrow(CM), function(i) CM[i,i])
+    False_Positive <- sapply(1:nrow(CM), function(i) sum(CM[,i]) - CM[i,i])
+    False_Negative <- sapply(1:nrow(CM), function(i) sum(CM[i,]) - CM[i,i])
+    True_Negative <- sapply(1:nrow(CM), function(i) sum(CM[-i,-i]))
+  }
+  SumALL <- True_Positive + False_Positive + False_Negative + True_Negative  
+  Precision <- True_Positive/(True_Positive + False_Positive)
+  Recall <- True_Positive / (True_Positive + False_Negative)
+  Sensitivity <- Recall   
+  Specificity <- True_Negative/ (True_Negative + False_Positive)
+  ErrorRate <- (False_Positive + False_Negative) / SumALL
+  ACC <- (True_Positive + True_Negative) / SumALL
+  
+  return (list(CM = CM,
+               ACC= ACC,
+               Precision = Precision,
+               Recall= Recall,
+               Sensitivity = Sensitivity,
+               Specificity = Specificity,
+               ErrorRate = ErrorRate
+          ))
+}
+
+```
+
+####Testing the Function
+```{r}
+my.predictions <- c (TRUE, TRUE, FALSE, FALSE, TRUE,TRUE,TRUE,FALSE)
+my.ground.truth <- c(TRUE, FALSE, FALSE, TRUE, TRUE,FALSE,TRUE,FALSE)
+
+testFun <- evaluateClassificationModel (predictedClass = my.predictions, actualClass = my.ground.truth)
+
+#Print Outputs
+testFun$CM
+
+testFunDF<-data.frame(rbind(Accuracy= testFun$ACC,
+                      Precision = testFun$Precision,
+                      Recall = testFun$Recall,
+                      Sensitivity = testFun$Sensitivity,
+                      Specificity= testFun$Specificity,
+                      ErrorRate= testFun$ErrorRate
+                      ))
+colnames(testFunDF) <-  "Metric Value"
+testFunDF
+
+```
+
+
+
+### Part B1 : 
+Write an R driver/test program that tests the above function on the real data and for any classification method (ksvm, C50, etc.). Print every Output Value returned by this function.
+
+###Binary Classification Model
+**Description:** Predict whether a cancer is malignant or benign from biopsy details.  
+**Library:** mlbench   
+**Number of Classes:** 2    
+**Data set:** BreastCancer  
+
+
+```{r message= FALSE, warning=FALSE}
+# Load the dataset
+library(mlbench)
+data(BreastCancer)
+#Remove ID column from the data set since it is a sequence and does not add any value to our prediction model
+BreastCancer <- BreastCancer[,2:11]
+
+```
+
+Examine the data set
+```{r}
+dim(BreastCancer)
+names(BreastCancer)
+table(BreastCancer$Class)
+```
+
+The target variable has 2 classes Benign and Malignant. Let's use Decision Tree C5.0 to predict the class variable.  
+
+####Split the data into Training and Testing Sets using Sample function
+```{r}
+library(C50)
+index <- sample(1:dim(BreastCancer)[1])
+lengthIndex<-length(index)
+
+#Select 70 percent of the data as Training. 30% as Validation
+trainSize <- floor(length(index)*0.7)
+testSize <- ceiling(length(index)*0.3)
+
+trainData<- BreastCancer[index[1:trainSize],]
+testData <- BreastCancer[index[trainSize+1:testSize],]
+summary(trainData$Class)
+summary(testData$Class)
+
+```
+
+####Fit the Model
+Fit the model using C5.0 Decision Tree and gather the metrics using the function created above
+```{r}
+#Fit the Model on Training data using 3 fold cross validation 
+modelFit<- C5.0(Class~., data = trainData, trials =3 )
+
+#Predict Training Accuracy
+predCancerTrain <- predict(modelFit, trainData[,-10])
+metricsTrain <- evaluateClassificationModel (predictedClass = predCancerTrain, actualClass = trainData[,10])
+
+#Predict Test Accuracy
+predCancerTest <- predict(modelFit, testData[,-10])
+metricsTest <- evaluateClassificationModel (predictedClass = predCancerTest, actualClass = testData[,10])
+```
+
+**Performance Metrics of the Decision Tree Model:**
+**Training Confusion Matrix:**
+```{r}
+metricsTrain$CM
+```
+
+**Print Performance Metrics and Training Accuracy:**
+```{r}
+metricsTrainDf<-data.frame(rbind(Accuracy= metricsTrain$ACC,
+                      Precision = metricsTrain$Precision,
+                      Recall = metricsTrain$Recall,
+                      Sensitivity = metricsTrain$Sensitivity,
+                      Specificity= metricsTrain$Specificity,
+                      ErrorRate= metricsTrain$ErrorRate
+                      ))
+colnames(metricsTrainDf) <-  "Metric Value"
+metricsTrainDf
+```
+
+
+**Testing Confusion Matrix:**
+```{r}
+metricsTest$CM
+```
+
+**Print Performance Metrics and Testing Accuracy:**
+```{r}
+metricsTestDf<-data.frame(rbind(Accuracy= metricsTest$ACC,
+                      Precision = metricsTest$Precision,
+                      Recall = metricsTest$Recall,
+                      Sensitivity = metricsTest$Sensitivity,
+                      Specificity= metricsTest$Specificity,
+                      ErrorRate= metricsTest$ErrorRate
+                      ))
+colnames(metricsTestDf) <- "Metric Value"
+metricsTestDf
+```
+
+### Part C1
+Install the caret package using the install.packages("caret", dependencies = c("Depends", "Suggests")) command.     Write a similar R driver/test program that uses the corresponding methods in the caret package to build the corresponding classification model and uses the confusionMatrix() method from the caret package to get the performance metrics.
+Compare the performance metrics obtained in Part B and Part C and comment whether they are similar/different and which way.
+
+
+***Install and Load Caret Package***
+```{r message= FALSE}
+if (!"kernlab" %in% rownames(installed.packages())) {
+  install.packages("caret")
+}
+library(caret)
+```
+
+###Binary Classification Model Using Caret Package
+**Description:** Predict whether a cancer is malignant or benign from biopsy details.  
+**Library:** mlbench   
+**Number of Classes:** 2    
+**Data set:** BreastCancer  
+
+Caret package gives us a function called createDataPartition which is an easy way to split data into Train and Test partitions
+
+```{r}
+train_index <- createDataPartition(BreastCancer$Class, p=0.70, list=FALSE)
+trainData<-BreastCancer[train_index,]
+testData<-BreastCancer[-train_index,]
+
+#Print Summaries of Train and Test Data
+
+summary(trainData$Class)
+summary(testData$Class)
+
+```
+
+####Fit the Model
+Fit the model using C5.0 Decition Tree and gather the metrics using confusionMatrix Function
+
+```{r}
+#Fit the Model on Training data using 3 fold cross validation 
+modelFit<- C5.0(Class~., data = trainData, trials =3 )
+
+#Predict Training Accuracy and use Confusion Matrix function to gather metrics
+predCancerTrain <- predict(modelFit, trainData[,-10])
+predCancerTrainMetrics <-confusionMatrix(trainData[,10], predCancerTrain)
+
+#Predict Testing Accuracy and use Confusion Matrix function to gather metrics
+predCancerTest <- predict(modelFit, testData[,-10])
+predCancerTestMetrics <-confusionMatrix(testData[,10], predCancerTest)
+
+
+```
+
+####Print metrics on Training Data using Confusion Matrix function
+```{r}
+predCancerTrainMetrics
+```
+
+####Print metrics on Testing Data using Confusion Matrix function
+```{r}
+predCancerTestMetrics
+```
+
+
+####Observations:   
+1. Data sampling using sample function vs createDataPartition function was different. The number of records that got selected in Train and Test data sets is slightly different.
+2. Here are the highlevel observations/comparisions on the Training Data set
+    + a. Accuracy, Sensitivity and Specificity without caret package using evaluateClassificationModel function are  `r metricsTrainDf[1,1]`,`r metricsTrainDf[4,1]`,`r metricsTrainDf[5,1]` respectively
+    + b. Accuracy, Sensitivity and Specificity with caret package using confusionMatrix function are  `r predCancerTrainMetrics$overall[1]`,`r predCancerTrainMetrics$byClass[1]`,`r predCancerTrainMetrics$byClass[2]` respectively
+2. Here are the highlevel observations/comparisions on the Testing Data set
+    + a. Accuracy, Sensitivity and Specificity without caret package using evaluateClassificationModel function are  `r metricsTestDf[1,1]`,`r metricsTestDf[4,1]`,`r metricsTestDf[5,1]` respectively
+    + b. Accuracy, Sensitivity and Specificity with caret package using confusionMatrix function are  `r predCancerTestMetrics$overall[1]`,`r predCancerTestMetrics$byClass[1]`,`r predCancerTestMetrics$byClass[2]` respectively.
+
+     
+
+
+### Part B2 : 
+
+###Classification Model (More than 2 Labels)
+**Description:** Predict the glass type from chemical properties.  
+**Library:** mlbench   
+**Number of Classes:** 7    
+**Data set:** Glass  
+
+
+```{r message= FALSE, warning=FALSE}
+# Load the dataset
+data(Glass)
+```
+
+Examine the data set
+```{r}
+dim(Glass)
+names(Glass)
+table(Glass$Type)
+```
+
+The target variable has 7 classes 1 through 7. Let's use KSVM to predict the class variable.  
+
+**Split the data into Training and Testing Sets**
+
+```{r}
+library(kernlab)
+index <- sample(1:dim(Glass)[1])
+lengthIndex<-length(index)
+
+#Select 70 percent of the data as Training. 30% as Validation
+trainSize <- floor(length(index)*0.7)
+testSize <- ceiling(length(index)*0.3)
+
+trainData<- Glass[index[1:trainSize],]
+testData <- Glass[index[trainSize+1:testSize],]
+summary(trainData$Type)
+summary(testData$Type)
+```
+
+####Fit the Model
+Fit the model using Support Vector Machine (KSVM) and gather the metrics using the function created above
+
+```{r}
+modelSVM<- ksvm(x = as.matrix(trainData[,-10]), y = trainData[,10])
+
+#Predict Training Accuracy
+predTrainGlass <- predict(modelSVM, trainData[,-10])
+glassTrainMetrics <- evaluateClassificationModel (predictedClass = predTrainGlass, actualClass = trainData[,10])
+
+#Predict Testing Accuracy
+predTestGlass <- predict(modelSVM, testData[,-10])
+glassTestMetrics <- evaluateClassificationModel (predictedClass = predTestGlass, actualClass = testData[,10])
+
+
+```
+
+**Performance Metrics of the KSVM Model:**  
+
+**Training Confusion Matrix:** 
+```{r}
+glassTrainMetrics$CM
+```
+
+**Print Performance Metrics and Training Accuracy:**
+```{r}
+glassTrainMetricsdf<-rbind(Accuracy= glassTrainMetrics$ACC,
+                      Precision = glassTrainMetrics$Precision,
+                      Recall = glassTrainMetrics$Recall,
+                      Sensitivity = glassTrainMetrics$Sensitivity,
+                      Specificity= glassTrainMetrics$Specificity,
+                      ErrorRate= glassTrainMetrics$ErrorRate
+                      )
+colnames(glassTrainMetricsdf) <- as.character(unique(Glass$Type))
+```
+
+Print Mean Accuracy And Metrics of Training Data
+
+**Mean Training Accuracy:** `r mean(glassTrainMetricsdf[1,])`
+```{r}
+glassTrainMetricsdf
+```
+
+**Testing Confusion Matrix:** 
+```{r}
+glassTestMetrics$CM
+```
+
+**Print Performance Metrics and Training Accuracy:**
+```{r}
+glassTestMetricsdf<-rbind(Accuracy= glassTestMetrics$ACC,
+                      Precision = glassTestMetrics$Precision,
+                      Recall = glassTestMetrics$Recall,
+                      Sensitivity = glassTestMetrics$Sensitivity,
+                      Specificity= glassTestMetrics$Specificity,
+                      ErrorRate= glassTestMetrics$ErrorRate
+                      )
+colnames(glassTestMetricsdf) <- as.character(unique(Glass$Type))
+```
+
+Print Mean Accuracy And Metrics of Testing Data
+
+**Mean Testing Accuracy:** `r mean(glassTestMetricsdf[1,])`
+
+```{r}
+glassTestMetricsdf
+```
+
+### Part C2
+
+**Description:** Predict the glass type from chemical properties.  
+**Library:** mlbench   
+**Number of Classes:** 7    
+**Data set:** Glass  
+
+Caret package gives us a function called createDataPartition which is an easy way to split data into Train and Test partitions
+
+```{r}
+train_index <- createDataPartition(Glass$Type, p=0.70, list=FALSE)
+trainData<-Glass[train_index,]
+testData<-Glass[-train_index,]
+
+#Print Summaries of Train and Test Data
+
+summary(trainData$Type)
+summary(testData$Type)
+
+```
+
+####Fit the Model
+Fit the model using Support Vector Machine (KSVM) and gather the metrics confusionMatrix Function
+
+```{r}
+modelSVM<- ksvm(Type~.,data= trainData)
+
+#Predict Training Accuracy and use Confusion Matrix function to gather metrics
+predTrainGlass <- predict(modelSVM, trainData[,-10])
+predTrainGlassMetrics <- confusionMatrix (trainData[,10], predTrainGlass)
+
+#Predict Testing Accuracy and use Confusion Matrix function to gather metrics
+predTestGlass <- predict(modelSVM, testData[,-10])
+predTestGlassMetrics <- confusionMatrix (testData[,10],predTestGlass)
+
+```
+
+####Print metrics on Training Data using Confusion Matrix function
+```{r}
+predTrainGlassMetrics
+```
+
+####Print metrics on Testing Data using Confusion Matrix function
+```{r}
+predTestGlassMetrics
+```
+
+####Observations:
+2. Test Accuracy reported is very different in Two Scenarios
+    + a. Accuracy without caret package using evaluateClassificationModel function is  `r mean(glassTestMetricsdf[1,])`
+    + a. Accuracy using caret package with confusionMatrix function is  `r predTestGlassMetrics$overall[1]`
+
