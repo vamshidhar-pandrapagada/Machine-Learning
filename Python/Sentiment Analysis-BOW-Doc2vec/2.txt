@@ -1,0 +1,86 @@
+import multiprocessing
+def feature_vecs_DOC(train_pos, train_neg, test_pos, test_neg):
+    """
+    Returns the feature vectors for all text in the train and test datasets.
+    """
+    # Doc2Vec requires LabeledSentence objects as input.
+    # Turn the datasets from lists of words to lists of LabeledSentence objects.
+    
+    #print("Removing Stop words")
+    #train_pos_clean,train_neg_clean, test_pos_clean, test_neg_clean  = remove_stopwords(train_pos, train_neg, test_pos, test_neg)
+    
+    def labelizeReviews(reviews, label_type):
+        labelized = []
+        for i,v in enumerate(reviews):
+            label = '%s_%s'%(label_type,i)            
+            labelized.append(LabeledSentence(v, [label]))
+        return labelized
+    
+ 
+    # Labelize Reviews/ Tweets
+    labeled_train_pos = labelizeReviews(train_pos, 'TRAIN_POS')
+    labeled_train_neg = labelizeReviews(train_neg, 'TRAIN_NEG')
+    labeled_test_pos =  labelizeReviews(test_pos, 'TEST_POS')
+    labeled_test_neg =  labelizeReviews(test_neg, 'TEST_NEG')
+
+    # Initialize model
+    NUM_WORKERS = multiprocessing.cpu_count()
+    model = Doc2Vec(min_count=1, alpha =  0.025, min_alpha=0.025, window=10, size=100, sample=1e-4, negative=5, workers=NUM_WORKERS)
+    sentences = labeled_train_pos + labeled_train_neg + labeled_test_pos + labeled_test_neg
+    model.build_vocab(sentences)
+
+    # Train the model
+    # This may take a bit to run 
+    print("Training Doc2Vec using Distributed Memory and Negative Sampling")
+    for i in range(5):
+        print ("Training iteration %d" % (i))
+        random.shuffle(sentences)
+        model.train(sentences, total_examples=model.corpus_count, epochs=model.iter)
+        model.alpha -= 0.002  # decrease the learning rate
+        model.min_alpha = model.alpha  # fix the learning rate, no decay
+        
+    
+    print("Generating Feature Vectors for Train POSITIVE")
+    # Use the docvecs function to extract the feature vectors for the training and test data
+    for i in range(len(labeled_train_pos)):
+        inf_vector = np.array(model.docvecs[labeled_train_pos[i].tags[0]])
+        #inf_vector = np.array(model.infer_vector(labeled_train_pos[i].words))
+        inf_vector = inf_vector.reshape((1,len(inf_vector)))
+        if (i == 0):
+            train_pos_vec = inf_vector
+        else:
+            train_pos_vec = np.append(train_pos_vec,inf_vector,axis = 0)
+            
+    print("Generating Feature Vectors for Train NEGATIVE")
+    for i in range(len(labeled_train_neg)):
+        inf_vector = np.array(model.docvecs[labeled_train_neg[i].tags[0]])        
+        #inf_vector = np.array(model.infer_vector(labeled_train_neg[i].words))
+        inf_vector = inf_vector.reshape((1,len(inf_vector)))
+        if (i == 0):
+            train_neg_vec = inf_vector
+        else:
+            train_neg_vec = np.append(train_neg_vec,inf_vector,axis = 0)
+            
+    print("Generating Feature Vectors for Test POSITIVE")
+    for i in range(len(labeled_test_pos)):
+        inf_vector = np.array(model.docvecs[labeled_test_pos[i].tags[0]])
+        #inf_vector = np.array(model.infer_vector(labeled_test_pos[i].words))
+        inf_vector = inf_vector.reshape((1,len(inf_vector)))
+        if (i == 0):
+            test_pos_vec = inf_vector
+        else:
+            test_pos_vec = np.append(test_pos_vec,inf_vector,axis = 0)
+            
+    print("Generating Feature Vectors for Test NEGATIVE")
+    for i in range(len(labeled_test_neg)):
+        inf_vector = np.array(model.docvecs[labeled_test_neg[i].tags[0]])
+        #inf_vector = np.array(model.infer_vector(labeled_test_neg[i].words))
+        inf_vector = inf_vector.reshape((1,len(inf_vector)))
+        if (i == 0):
+            test_neg_vec = inf_vector
+        else:
+            test_neg_vec = np.append(test_neg_vec,inf_vector,axis = 0)
+        
+    print("Done")    
+    # Return the four feature vectors
+    return model, train_pos_vec, train_neg_vec, test_pos_vec, test_neg_vec
